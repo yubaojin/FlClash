@@ -24,7 +24,7 @@ on Mobile:
 
 ## Features
 
-✈️ Multi-platform: Android, Windows, macOS and Linux
+✈️ Multi-platform: Android, Windows, macOS, Linux and fnOS
 
 💻 Adaptive multiple screen sizes, Multiple color themes available
 
@@ -35,6 +35,14 @@ on Mobile:
 ✨ Support subscription link, Dark mode
 
 ## Use
+
+### fnOS
+
+FlClash supports **fnOS 1.2.0505 or later on Intel/AMD x86_64** through the native [fnOS integration](fnos/README.md). Upload the generated `.fpk` in fnOS App Center for manual installation. After installation, a FlClash icon appears on the fnOS desktop and opens the built-in Chinese web console.
+
+The fnOS console provides profile and subscription management, policy-group node selection, rule/global/direct modes, and IPv4 or dual-stack transparent proxy settings. NAS applications and standard Docker `host` / `bridge` networks share the same proxy rules. `macvlan`, `ipvlan`, NIC passthrough, and VM paths that do not route through the NAS are not automatically covered.
+
+The fnOS integration is currently a preview. Building an `.fpk` does not mean every network path has passed hardware acceptance; review the [current fnOS testing record](fnos/TESTING-0.2.1.md) before deployment.
 
 ### Linux
 

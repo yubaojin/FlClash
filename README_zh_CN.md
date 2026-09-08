@@ -24,7 +24,7 @@ on Mobile:
 
 ## Features
 
-✈️ 多平台: Android, Windows, macOS and Linux
+✈️ 多平台：Android、Windows、macOS、Linux 和飞牛 fnOS
 
 💻 自适应多个屏幕尺寸,多种颜色主题可供选择
 
@@ -35,6 +35,14 @@ on Mobile:
 ✨ 支持一键导入订阅, 深色模式
 
 ## Use
+
+### 飞牛 fnOS
+
+FlClash 通过原生 [飞牛集成模块](fnos/README.md)支持 **fnOS 1.2.0505 及以上版本、Intel/AMD x86_64**。在飞牛应用中心手动上传生成的 `.fpk` 安装包，安装后桌面会显示 FlClash 图标，点击即可打开内置中文 Web 管理页。
+
+飞牛管理页提供配置档案与订阅管理、策略组节点选择、规则／全局／直连模式，以及仅 IPv4 或 IPv4 + IPv6 双栈透明代理设置。NAS 自带应用和普通 Docker `host`／`bridge` 网络共用同一套节点与分流规则；`macvlan`、`ipvlan`、网卡直通以及不经过 NAS 路由的虚拟机网络不会被自动接管。
+
+飞牛集成目前为预览版。生成 `.fpk` 不代表所有网络类型都已完成实机验收，部署前请阅读[当前飞牛测试记录](fnos/TESTING-0.2.1.md)。
 
 ### Linux
 
