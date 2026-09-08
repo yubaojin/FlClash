@@ -1,0 +1,10 @@
+[
+  {
+    "stepTitle": "安装 FlClash 飞牛集成预览版",
+    "items": [
+      { "type": "tips", "helpText": "目标：fnOS 1.2.0505 / Intel、AMD x86_64。当前包尚未完成实机兼容性验收，建议先在测试设备安装。" },
+      { "type": "tips", "helpText": "首次安装只开启管理员配置页面。开启透明代理将调整 NAS 网络；请先记录客户端网关和 NAS 管理地址。停用应用或关闭 NAS 前，应将依赖 NAS 网关的客户端恢复原网关。" },
+      { "type": "tips", "helpText": "设置保存在 flclash/data/private，共享目录中的私有子目录仅 root 可读；卸载默认保留。" }
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+#!/bin/bash
+source "$(dirname "${BASH_SOURCE[0]}")/common"
+case "${1:-}" in
+  start)
+    if ! run_service start; then report_error 'FlClash 启动失败，请检查 private/startup.log。'; exit 1; fi
+    ;;
+  stop)
+    report_error '停用整个应用将撤销普通转发。请确保网关指向 NAS 的虚拟机与容器已恢复原网关。'
+    if ! run_service stop; then report_error '网络恢复尚未完成，禁止强行删除规则，请检查恢复说明。'; exit 1; fi
+    ;;
+  status)
+    if run_service status; then exit 0; else exit 3; fi
+    ;;
+  *) exit 1 ;;
+esac

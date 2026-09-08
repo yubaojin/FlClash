@@ -1,0 +1,13 @@
+#!/bin/bash
+source "$(dirname "${BASH_SOURCE[0]}")/common"
+if [ -L "$FLCLASH_DATA" ] || [ -L "$FLCLASH_SHARE" ] || [ -L "$(dirname "$FLCLASH_SHARE")" ]; then
+  report_error '私有数据路径不能是符号链接。'
+  exit 1
+fi
+chown root:root "$FLCLASH_SHARE" "$(dirname "$FLCLASH_SHARE")" "$FLCLASH_DATA"
+chmod 0755 "$FLCLASH_SHARE" "$(dirname "$FLCLASH_SHARE")"
+chmod 0700 "$FLCLASH_DATA"
+chown root:root "$TRIM_APPDEST" "${TRIM_APPDEST}/bin" "${TRIM_APPDEST}/bin/FlClashFnos" "${TRIM_APPDEST}/bin/FlClashCore"
+chmod 0755 "$TRIM_APPDEST" "${TRIM_APPDEST}/bin"
+chmod 0755 "${TRIM_APPDEST}/bin/FlClashFnos" "${TRIM_APPDEST}/bin/FlClashCore"
+printf '%s\n' '配置已保留；启动后按之前保存的代理开关恢复，并重新检查网络条件。'

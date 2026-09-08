@@ -1,0 +1,19 @@
+#!/bin/bash
+source "$(dirname "${BASH_SOURCE[0]}")/common"
+if [ "${wizard_gateway_restored:-false}" != true ]; then
+  report_error '请确认所有相关客户端已恢复原网关，再卸载应用。'
+  exit 1
+fi
+run_service stop
+if [ "${wizard_remove_data:-keep}" = remove ]; then
+  resolved_share="$(realpath -e -- "$FLCLASH_SHARE")"
+  resolved_data="$(realpath -e -- "$FLCLASH_DATA")"
+  if [ "$resolved_data" != "${resolved_share}/private" ] || [ -L "$FLCLASH_DATA" ]; then
+    report_error '数据目录归属检查失败，拒绝删除。'
+    exit 1
+  fi
+  find "$resolved_data" -mindepth 1 -maxdepth 1 -exec rm -rf -- '{}' +
+  printf '%s\n' '已按明确选择清除 FlClash 私有配置，无法由本应用恢复。'
+else
+  printf '%s\n' "配置保留于 ${FLCLASH_DATA}，重装到同一存储空间可继续使用。"
+fi

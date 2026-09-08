@@ -1,0 +1,15 @@
+{
+  ".url": {
+    "flclash.main": {
+      "title": "FlClash",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/flclash",
+      "gatewaySocket": "app.sock",
+      "url": "/app/flclash",
+      "allUsers": false,
+      "control": { "accessPerm": "readonly" }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "stepTitle": "卸载与网络恢复",
+    "items": [
+      { "type": "tips", "helpText": "卸载会移除代理及普通转发。依赖 NAS 网关的虚拟机和容器必须先恢复原网关。" },
+      { "type": "select", "field": "wizard_gateway_restored", "label": "客户端网关确认", "initValue": "false", "options": [{ "label": "尚未恢复，取消卸载", "value": "false" }, { "label": "已恢复，或没有网关客户端", "value": "true" }] },
+      { "type": "select", "field": "wizard_remove_data", "label": "用户配置", "initValue": "keep", "options": [{ "label": "保留配置（默认）", "value": "keep" }, { "label": "永久清除配置", "value": "remove" }] }
+    ]
+  }
+]

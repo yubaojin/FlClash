@@ -1,0 +1,9 @@
+[
+  {
+    "stepTitle": "升级 FlClash",
+    "items": [
+      { "type": "tips", "helpText": "升级保留配置，期间会停止代理并恢复网络。请先恢复网关客户端的原网关，升级并验证后再接入。" },
+      { "type": "select", "field": "wizard_gateway_restored", "label": "客户端网关确认", "initValue": "false", "options": [{ "label": "尚未恢复，取消升级", "value": "false" }, { "label": "已恢复，或没有网关客户端", "value": "true" }] }
+    ]
+  }
+]

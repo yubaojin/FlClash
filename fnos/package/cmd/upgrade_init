@@ -1,0 +1,7 @@
+#!/bin/bash
+source "$(dirname "${BASH_SOURCE[0]}")/common"
+if [ "${wizard_gateway_restored:-false}" != true ]; then
+  report_error '请确认所有相关客户端已恢复原网关，再升级应用。'
+  exit 1
+fi
+run_service stop

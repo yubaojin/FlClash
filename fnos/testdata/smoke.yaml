@@ -1,0 +1,7 @@
+proxies: []
+proxy-groups:
+  - name: 文件验收策略
+    type: select
+    proxies: [DIRECT, REJECT]
+rules:
+  - MATCH,文件验收策略

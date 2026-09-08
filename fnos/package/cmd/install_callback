@@ -1,0 +1,13 @@
+#!/bin/bash
+source "$(dirname "${BASH_SOURCE[0]}")/common"
+if [ -L "$FLCLASH_DATA" ] || [ -L "$FLCLASH_SHARE" ] || [ -L "$(dirname "$FLCLASH_SHARE")" ]; then
+  report_error '私有数据路径不能是符号链接。'
+  exit 1
+fi
+chown root:root "$FLCLASH_SHARE" "$(dirname "$FLCLASH_SHARE")"
+chmod 0755 "$FLCLASH_SHARE" "$(dirname "$FLCLASH_SHARE")"
+install -d -m 0700 -o root -g root "$FLCLASH_DATA"
+chown root:root "$TRIM_APPDEST" "${TRIM_APPDEST}/bin" "${TRIM_APPDEST}/bin/FlClashFnos" "${TRIM_APPDEST}/bin/FlClashCore"
+chmod 0755 "$TRIM_APPDEST" "${TRIM_APPDEST}/bin"
+chmod 0755 "${TRIM_APPDEST}/bin/FlClashFnos" "${TRIM_APPDEST}/bin/FlClashCore"
+printf '%s\n' '首次安装仅启动管理服务；请从桌面图标导入配置并完成网络检测后再开启代理。'

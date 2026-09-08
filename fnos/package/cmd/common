@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+: "${TRIM_APPDEST:?缺少应用安装目录}"
+: "${TRIM_DATA_SHARE_PATHS:?缺少应用数据共享目录}"
+FLCLASH_SHARE="${TRIM_DATA_SHARE_PATHS%%:*}"
+case "$FLCLASH_SHARE" in
+  /*/flclash/data) ;;
+  *) printf '%s\n' '数据目录不符合 flclash/data 约定，拒绝操作。' >&2; exit 1 ;;
+esac
+FLCLASH_DATA="${FLCLASH_SHARE}/private"
+FLCLASH_BINARY="${TRIM_APPDEST}/bin/FlClashFnos"
+FLCLASH_RUNTIME=/run/flclash
+report_error() {
+  printf '%s\n' "$1" >&2
+  if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then printf '%s\n' "$1" >> "$TRIM_TEMP_LOGFILE"; fi
+}
+run_service() {
+  "$FLCLASH_BINARY" "$1" "$TRIM_APPDEST" "$FLCLASH_DATA" "$FLCLASH_RUNTIME"
+}
