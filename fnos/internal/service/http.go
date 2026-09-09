@@ -29,6 +29,8 @@ var webFiles embed.FS
 const prefix = "/app/flclash"
 
 type apiRequest struct {
+	TargetID         string    `json:"targetID"`
+	Preset           string    `json:"preset"`
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
 	URL              string    `json:"url"`
@@ -49,6 +51,7 @@ type apiRequest struct {
 }
 
 var routes = map[string]string{
+	"connections": "GET", "network/targets": "GET", "events": "GET", "diagnostics/start": "POST", "diagnostics/result": "GET", "diagnostics/cancel": "POST", "diagnostics/export": "GET",
 	"status": "GET", "profiles": "POST", "profiles/update": "POST", "profiles/edit": "POST", "profiles/select": "POST", "profiles/delete": "POST",
 	"settings": "POST", "control": "POST", "restart": "POST", "proxies": "GET", "proxies/select": "POST", "proxies/delay": "POST",
 	"network": "GET", "network/detect": "POST", "network/recover": "POST", "logs": "GET",
@@ -96,6 +99,9 @@ func (m *Manager) Handler() http.Handler {
 			reply(w, 200, *m.snapshot.Load())
 			return
 		}
+		if m.observationHTTP(w, r, path, req) {
+			return
+		}
 		if path == "logs" {
 			reply(w, 200, m.logs.List())
 			return
@@ -125,11 +131,15 @@ func (m *Manager) Handler() http.Handler {
 		m.publish()
 		if err != nil {
 			m.logs.Add(err.Error())
+			m.observe().event(errorCode(err, path), "error", operationTitle(path)+"失败", err.Error(), operationNext(path))
 			reply(w, 400, map[string]string{"error": redact(err.Error()), "code": errorCode(err, path)})
 			return
 		}
 		if result == nil {
 			result = map[string]bool{"ok": true}
+		}
+		if title := operationTitle(path); title != "操作" {
+			m.observe().event("operation_completed", "success", title+"完成", "", "")
 		}
 		reply(w, 200, result)
 	})
@@ -344,7 +354,7 @@ func GatewayHandler(internalSocket string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Path != prefix+"/" && r.URL.Path != prefix+"/app.js" && r.URL.Path != prefix+"/model.js" && r.URL.Path != prefix+"/style.css" {
+		if r.URL.Path != prefix+"/" && r.URL.Path != prefix+"/app.js" && r.URL.Path != prefix+"/console.js" && r.URL.Path != prefix+"/model.js" && r.URL.Path != prefix+"/style.css" {
 			http.NotFound(w, r)
 			return
 		}

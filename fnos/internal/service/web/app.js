@@ -46,6 +46,12 @@ function message(scope, text = '', tone = 'error', owner = 'operation') {
   node.hidden = !text;
   node.dataset.owner = owner;
 }
+function operationError(scope, error) {
+  const next = scope === 'profiles' || scope === 'dialog' ? '检查地址或配置内容后重试，原有效配置保留。' : scope === 'proxies' ? '刷新策略组并测试所选节点后重试。' : '查看网络条件或最近检测结果，修正后再操作。';
+  message(scope, `本次操作未完成。${next}`);
+  const detail = element('details'); detail.append(element('summary', '查看技术原因'), element('p', `${error.code || 'request_failed'}：${error.message}`, 'technical'));
+  $(`${scope}-message`).append(detail);
+}
 function toast(text) {
   clearTimeout(toastTimer);
   setText('toast', text); $('toast').hidden = false;
@@ -95,7 +101,7 @@ async function mutate(scope, task) {
   if (!canWrite()) { message(scope, '后台正在处理操作或连接尚未恢复，请稍后重试。'); return; }
   busy = true; stateGate.next(); batch.cancel(); message(scope); updateLocks();
   try { await task(); }
-  catch (error) { message(scope, error.message); }
+  catch (error) { operationError(scope, error); }
   finally {
     busy = false; stateGate.next();
     await refresh(false);
@@ -120,6 +126,7 @@ function fillOptions(id, names, selected, placeholder) {
   if (document.activeElement !== node) node.value = selected || '';
 }
 function updateLocks() {
+  if (state) setText('toggle', busy || serverBusy() ? UI.operationNames[state.operation] || '正在处理…' : UI.proxyStatus(state).action);
   document.querySelectorAll('[data-write]').forEach(node => { node.disabled = !canWrite() || node.dataset.locked === 'true'; });
   $('main-group').disabled = !canWrite() || !proxyData || state?.settings.mode === 'global';
   const group = proxyData?.proxies?.[mainGroup()];
@@ -149,6 +156,9 @@ function renderState() {
   const display = UI.proxyStatus(state);
   setText('proxy-state', display.title);
   setText('proxy-detail', display.detail);
+  $('proxy-failure').hidden = !state.blocked && !state.degraded;
+  setText('proxy-failure-detail', state.blocked || state.degraded || '');
+  if (state.blocked && !state.proxyActive) setText('proxy-detail', '开启未完成；当前没有透明接管。请查看原因并重新检测，不会自动反复启动。');
   $('power-icon').className = `power ${display.tone}`;
   setText('toggle', display.action);
   setText('core-state', state.coreReady ? '配置已就绪' : state.coreRunning ? '尚未加载配置' : '核心未运行');
@@ -168,7 +178,7 @@ function renderState() {
     node.classList.toggle('selected', node.dataset.mode === s.mode);
     node.setAttribute('aria-pressed', String(node.dataset.mode === s.mode));
   });
-  setText('mode-help', { rule: '按订阅规则分流；不同规则仍可指向不同策略组。', global: '所有纳入接管的流量使用 GLOBAL 策略组。', direct: '所有纳入接管的流量直连，不使用代理节点。' }[s.mode]);
+  setText('mode-help', { rule: '按订阅规则分流；不同规则仍可指向不同策略组。', global: '所有纳入接管的流量使用 GLOBAL 策略组。', direct: '核心按直连模式处理流量，透明接管仍开启；“关闭代理”才会停止接管。' }[s.mode]);
   if (!dirty.has('network')) { $('network-mode').value = s.networkMode || 'dual'; $('network-confirm').checked = !!s.networkModeConfirmed; }
   renderNetworkConfirmation();
   if (!dirty.has('gateway')) $('gateway-cidrs').value = (s.gatewayCIDRs || []).join('\n');
@@ -185,15 +195,17 @@ function renderState() {
   const signature = JSON.stringify(steps);
   if ($('setup-steps').dataset.signature !== signature) {
     $('setup-steps').replaceChildren(...steps.map(([label, done, tab], index) => {
+      if (done) return null;
       const b = element('button', undefined, `setup-step${done ? ' done' : ''}`);
       b.append(element('span', done ? '✓' : String(index + 1), 'step-number'), element('span', label));
       b.addEventListener('click', () => { navigate(tab); if (index === 1) $('main-group').focus(); });
       return b;
-    }));
+    }).filter(Boolean));
     $('setup-steps').dataset.signature = signature;
   }
   $('setup-guide').hidden = steps.every(item => item[1]);
   updateLocks();
+  globalThis.FlclashConsole?.stateChanged();
 }
 
 async function refresh(loadNodes = true) {
@@ -259,10 +271,10 @@ function renderProfiles() {
     }
     const active = p.id === state.settings.active;
     card.name.textContent = p.name;
-    card.badge.textContent = active ? state.coreReady ? '使用中' : '待加载' : p.url ? '订阅' : '本地';
+    card.badge.textContent = active ? state.coreReady ? '正在使用' : '已保存 · 待加载' : '已保存';
     card.badge.className = `badge${active && state.coreReady ? ' good' : ''}`;
-    card.detail.textContent = `${p.url ? '订阅配置' : '本地配置'} · 更新于 ${date(p.updated)} · ${p.url && p.intervalHours ? `每 ${p.intervalHours} 小时更新` : '手动更新'}`;
-    card.error.textContent = p.error ? `最近更新失败：${p.error}` : '';
+    card.detail.textContent = `${p.url ? '订阅配置' : '本地配置'} · 上次成功 ${date(p.updated)} · ${p.url && p.intervalHours ? `下次 ${date(new Date(Math.max(Date.parse(p.updated) || 0, Date.parse(p.lastAttempt) || 0) + p.intervalHours * 3600000).toISOString())}（每 ${p.intervalHours} 小时）` : '手动更新'}`;
+    card.error.textContent = p.error ? `更新失败，旧配置仍保留。可稍后重试更新。详情：${p.error}` : '';
     card.error.hidden = !p.error;
     card.use.textContent = active && state.coreReady ? '使用中' : active ? '加载配置' : '使用';
     card.update.hidden = !p.url;
@@ -300,11 +312,15 @@ function namesInView() { return UI.filteredNodes(currentGroup(), $('node-search'
 function renderNodes() {
   const group = currentGroup();
   $('proxy-empty').hidden = !!group; $('proxy-browser').hidden = !group;
-  fillOptions('proxy-group', proxyData?.all || [], proxyGroup);
+  const query = $('group-search').value.trim().toLocaleLowerCase();
+  const groups = (proxyData?.all || []).filter(name => name.toLocaleLowerCase().includes(query));
+  fillOptions('proxy-group', groups, groups.includes(proxyGroup) ? proxyGroup : '', query ? (groups.length ? '选择匹配的策略组' : '没有匹配的策略组') : undefined);
   if (!group) { $('node-list').replaceChildren(); nodeRows.clear(); nodeSignature = ''; return; }
   const names = namesInView();
   const type = { Selector: '手动选择', URLTest: '自动选择', Fallback: '故障转移', LoadBalance: '负载均衡', Relay: '链式代理' }[group.type] || group.type;
-  setText('group-description', `${type} · 当前：${group.now || '由核心管理'} · ${names.length} 个匹配项`);
+  setText('selected-node', group.now || '由核心管理');
+  setText('selected-node-help', `${proxyGroup} · ${type}。切换后，既有连接可能继续使用旧出口。`);
+  setText('group-description', `${type} · ${names.length} 个匹配项`);
   const visible = names.slice(0, nodeLimit);
   const signature = JSON.stringify([coreKey(proxyData), proxyGroup, visible, group.type]);
   if (signature !== nodeSignature) {
@@ -319,7 +335,7 @@ function renderNodes() {
       const groupName = proxyGroup;
       const request = coreRequest();
       const select = actionButton('选择', 'proxies', async () => {
-        await api('proxies/select', { group: groupName, proxy: name, ...request }); toast('节点已切换。');
+        await api('proxies/select', { group: groupName, proxy: name, ...request }); toast('节点已切换；既有连接可能继续使用旧出口。');
       });
       select.hidden = group.type !== 'Selector';
       const test = element('button', '测延迟', 'secondary'); test.addEventListener('click', () => { void testNode(name); });
@@ -424,7 +440,7 @@ function renderLogs() {
 }
 
 function navigate(tab, updateHash = true) {
-  if (!['overview', 'profiles', 'proxies', 'network', 'logs'].includes(tab)) tab = 'overview';
+  if (!['overview', 'profiles', 'proxies', 'connections', 'network', 'logs'].includes(tab)) tab = 'overview';
   scrollPositions.set(currentTab, $('workspace').scrollTop);
   if (currentTab !== tab) { batch.cancel(); logGate.next(); }
   currentTab = tab;
@@ -438,6 +454,7 @@ function navigate(tab, updateHash = true) {
   if (updateHash && location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
   if (tab === 'proxies') void loadProxies();
   if (tab === 'logs') void loadLogs();
+  globalThis.FlclashConsole?.navigated();
 }
 function confirmAction(title, text) {
   if (confirmResult) return Promise.resolve(false);
@@ -469,6 +486,9 @@ function openProfile(id = '') {
   setText('url-help', p ? '已保存的订阅地址不会反显。如需更换，请填写新地址。' : '地址包含访问凭据，默认隐藏。只向 NAS 后台提交。');
   setText('file-description', '支持 .yaml / .yml，最大 8 MiB。');
   if (p) { $('profile-name').value = p.name; $('profile-interval').value = p.intervalHours; $('source-yaml').hidden = true; }
+  const interval = $('profile-interval').value;
+  $('profile-interval-preset').value = ['0', '6', '12', '24'].includes(interval) ? interval : 'custom';
+  $('custom-interval').hidden = $('profile-interval-preset').value !== 'custom';
   $('profile-dialog').showModal(); $('profile-name').focus(); updateLocks();
 }
 function closeProfileNow() {
@@ -487,7 +507,7 @@ window.addEventListener('hashchange', () => navigate(location.hash.slice(1), fal
 $('retry').addEventListener('click', () => { void refresh(); });
 document.querySelectorAll('[data-mode]').forEach(node => node.addEventListener('click', () => { void mutate('overview', async () => { await api('settings', { mode: node.dataset.mode }); toast('分流模式已保存。'); }); }));
 $('main-group').addEventListener('change', () => { const value = $('main-group').value; void mutate('overview', async () => { await api('settings', { healthGroup: value }); toast('主要策略组已保存。'); }); });
-$('quick-node').addEventListener('change', () => { const name = $('quick-node').value; const request = coreRequest(); void mutate('overview', async () => { await api('proxies/select', { group: mainGroup(), proxy: name, ...request }); toast('节点已切换。'); }); });
+$('quick-node').addEventListener('change', () => { const name = $('quick-node').value; const request = coreRequest(); void mutate('overview', async () => { await api('proxies/select', { group: mainGroup(), proxy: name, ...request }); toast('节点已切换；既有连接可能继续使用旧出口。'); }); });
 for (const id of ['main-group', 'quick-node']) $(id).addEventListener('blur', renderQuick);
 $('toggle').addEventListener('click', () => {
   if (!state) return;
@@ -502,7 +522,9 @@ $('restart').addEventListener('click', () => { void mutate('overview', async () 
 $('add-profile').addEventListener('click', () => openProfile());
 $('profile-search').addEventListener('input', () => { renderProfiles(); updateLocks(); });
 $('refresh-proxies').addEventListener('click', () => { void loadProxies(); });
-$('proxy-group').addEventListener('change', () => { batch.cancel(); proxyGroup = $('proxy-group').value; nodeLimit = 80; renderNodes(); });
+$('group-search').addEventListener('input', renderNodes);
+$('profile-interval-preset').addEventListener('change', () => { const value = $('profile-interval-preset').value; $('custom-interval').hidden = value !== 'custom'; if (value !== 'custom') $('profile-interval').value = value; dialogDirty = true; });
+$('proxy-group').addEventListener('change', () => { if (!$('proxy-group').value) return; batch.cancel(); proxyGroup = $('proxy-group').value; nodeLimit = 80; renderNodes(); });
 for (const id of ['node-search', 'node-sort']) $(id).addEventListener(id === 'node-search' ? 'input' : 'change', () => { nodeLimit = 80; renderNodes(); });
 $('more-nodes').addEventListener('click', () => { nodeLimit += 80; renderNodes(); });
 $('batch-test').addEventListener('click', () => { batch.start(namesInView()); });
@@ -558,7 +580,7 @@ $('profile-form').addEventListener('submit', event => {
   void mutate('dialog', async () => {
     if (editing) { await api('profiles/edit', { ...body, id: editing }); closeProfileNow(); toast('配置修改已保存。'); return; }
     const result = await UI.importProfile(api, body, use);
-    closeProfileNow(); navigate('profiles');
+    closeProfileNow(); navigate('profiles'); $('import-next').hidden = false;
     if (result.error) message('profiles', `配置已导入，但使用失败：${result.error.message} 原运行配置保留；请修正后再使用。`, 'warning');
     else toast(result.used ? '配置已导入并使用，未自动开启透明代理。' : '配置已导入，可在列表中选择使用。');
   });

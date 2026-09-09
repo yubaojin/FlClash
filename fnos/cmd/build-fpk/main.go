@@ -281,24 +281,37 @@ func build(root, fnpack, goBin string) error {
 	if err = copyFile(filepath.Join(root, "fnos/README.md"), filepath.Join(stage, "app/安装与恢复说明.md"), 0644); err != nil {
 		return err
 	}
-	for _, document := range []string{"TESTING.md", "TESTING-0.2.0.md", "TESTING-0.2.1.md"} {
+	for _, document := range []string{"TESTING.md", "TESTING-0.2.0.md", "TESTING-0.2.1.md", "TESTING-0.3.0.md"} {
 		if err = copyFile(filepath.Join(root, "fnos", document), filepath.Join(stage, "app", document), 0644); err != nil {
 			return err
 		}
 	}
-	screenshots, err := filepath.Glob(filepath.Join(root, "fnos/docs/screenshots/0.2.0/*.png"))
-	if err != nil {
-		return err
-	}
-	for _, screenshot := range screenshots {
-		if err = copyFile(screenshot, filepath.Join(stage, "app/docs/screenshots/0.2.0", filepath.Base(screenshot)), 0644); err != nil {
+	for _, pattern := range []string{"docs/screenshots/*/*.png", "docs/acceptance/*/*.jsonl"} {
+		artifacts, err := filepath.Glob(filepath.Join(root, "fnos", pattern))
+		if err != nil {
 			return err
+		}
+		for _, artifact := range artifacts {
+			rel, err := filepath.Rel(filepath.Join(root, "fnos"), artifact)
+			if err != nil {
+				return err
+			}
+			if err = copyFile(artifact, filepath.Join(stage, "app", rel), 0644); err != nil {
+				return err
+			}
 		}
 	}
 	for _, license := range []struct{ source, target string }{{"LICENSE", "FlClash-LICENSE"}, {"core/Clash.Meta/LICENSE", "mihomo-LICENSE"}} {
 		if err = copyFile(filepath.Join(root, license.source), filepath.Join(stage, "app/licenses", license.target), 0644); err != nil {
 			return err
 		}
+	}
+	netModule, err := run(filepath.Join(root, "fnos"), goBin, nil, "list", "-m", "-f", "{{.Dir}}", "golang.org/x/net")
+	if err != nil {
+		return err
+	}
+	if err = copyFile(filepath.Join(strings.TrimSpace(netModule), "LICENSE"), filepath.Join(stage, "app/licenses", "golang-x-net-LICENSE"), 0644); err != nil {
+		return err
 	}
 	metadata, _ := json.MarshalIndent(map[string]any{"go": version, "fnpack": fpVersion, "mihomoCommit": actual, "buildConfig": values, "target": "linux/amd64/v1", "fnOSMin": "1.2.0505", "isolationOverlay": []string{"独立 nftables 表 flclash_tun", "nftables 初始化失败时拒绝 iptables 回退", "修复最大地址区间触发 nftables EEXIST"}, "hardwareAcceptance": false}, "", "  ")
 	if err = write(filepath.Join(stage, "app/build-info.json"), metadata, 0644); err != nil {

@@ -115,6 +115,9 @@ func lockOwner(runtimeDir string, nonblock bool) (*os.File, error) {
 }
 
 func RunCLI(args []string) error {
+	if len(args) == 1 && args[0] == "probe" {
+		return runProbeCLI()
+	}
 	if len(args) != 4 {
 		return errors.New("用法: FlClashFnos start|stop|status|supervise|web|guard|recover 安装目录 数据目录 运行目录")
 	}

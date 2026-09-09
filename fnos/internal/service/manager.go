@@ -14,6 +14,8 @@ import (
 )
 
 type Manager struct {
+	observeOnce                   sync.Once
+	observation                   *Observability
 	snapshot                      atomic.Pointer[json.RawMessage]
 	configured                    bool
 	revision                      uint64
@@ -90,11 +92,12 @@ func (m *Manager) ensureCore() error {
 	if err := m.net.RestoreTun(); err != nil {
 		return err
 	}
-	c, err := launchCore(m.binary, m.home, filepath.Join(m.runtimeDir, "core.sock"), m.logs)
+	c, err := launchCore(m.binary, m.home, filepath.Join(m.runtimeDir, "core.sock"), m.logs, m.observe())
 	if err != nil {
 		return err
 	}
 	m.core = c
+	m.syncObservation()
 	return nil
 }
 
@@ -168,6 +171,7 @@ func (m *Manager) apply(raw string, enabled bool) error {
 }
 
 func (m *Manager) degrade(reason string) {
+	m.observe().event("proxy_degraded", "warning", "代理运行异常", reason, "检查节点或打开网络检测，普通直连恢复后再验证")
 	if m.settings.Enabled {
 		m.degraded = redact(reason)
 		m.logs.Add("直连降级: " + reason)
@@ -248,6 +252,7 @@ func (m *Manager) enable() error {
 	m.blocked = ""
 	m.failures = 0
 	m.successes = 0
+	m.observe().event("proxy_enabled", "success", "透明代理已开启", "接管已建立，具体目标仍可通过网络检测验证", "检测 NAS 或 Docker 网络")
 	return nil
 }
 
@@ -274,6 +279,20 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closing = true
+	o := m.observe()
+	o.mu.Lock()
+	task := o.running
+	if task != nil {
+		task.cancel()
+	}
+	o.mu.Unlock()
+	if task != nil {
+		select {
+		case <-task.done:
+		case <-time.After(5 * time.Second):
+			return errors.New("检测进程尚未回收，请稍后重试停用应用")
+		}
+	}
 	m.operation = "shutdown"
 	m.publish()
 	if m.core != nil {
@@ -435,6 +454,7 @@ func (m *Manager) updateProfile(id string) error {
 	}
 	if err != nil {
 		p.Error = redact(err.Error())
+		m.observe().event("subscription_failed", "warning", "订阅更新失败", "已保留原配置", "检查订阅地址或网络后重新更新")
 		_ = m.persist()
 		return err
 	}
@@ -449,6 +469,7 @@ func (m *Manager) updateProfile(id string) error {
 		}
 		return err
 	}
+	m.observe().event("subscription_updated", "success", "订阅更新成功", "有效配置已保存", "")
 	return nil
 }
 
@@ -476,10 +497,11 @@ func (m *Manager) status() map[string]any {
 	}
 	s := m.settings
 	s.Profiles = profiles
-	return map[string]any{"version": "0.2.1", "settings": s, "coreRunning": m.core.Alive(), "coreReady": m.core.Alive() && m.configured, "revision": m.revision, "session": m.session, "operation": m.operation, "updatedAt": time.Now(), "blocked": m.blocked, "network": m.net.report, "proxyActive": m.active && m.core.Alive(), "degraded": m.degraded, "networkRecoveryPending": m.net.j.Tun && (!m.active || !m.core.Alive()), "traffic": m.traffic, "trafficAt": m.trafficAt, "gatewayForwarding": m.net.j.Gateway, "acceptance": "网络覆盖按实际测试结果确认"}
+	return map[string]any{"version": appVersion, "coreSession": m.observe().coreID, "settings": s, "coreRunning": m.core.Alive(), "coreReady": m.core.Alive() && m.configured, "revision": m.revision, "session": m.session, "operation": m.operation, "updatedAt": time.Now(), "blocked": m.blocked, "network": m.net.report, "proxyActive": m.active && m.core.Alive(), "degraded": m.degraded, "networkRecoveryPending": m.net.j.Tun && (!m.active || !m.core.Alive()), "traffic": m.traffic, "trafficAt": m.trafficAt, "gatewayForwarding": m.net.j.Gateway, "acceptance": "网络覆盖按实际测试结果确认"}
 }
 
 func (m *Manager) publish() {
+	m.syncObservation()
 	data, err := json.Marshal(m.status())
 	if err == nil {
 		raw := json.RawMessage(data)

@@ -28,6 +28,7 @@ func command(name string, args ...string) ([]byte, error) {
 }
 
 type Check struct {
+	ID       string `json:"id"`
 	Name     string `json:"name"`
 	OK       bool   `json:"ok"`
 	Detail   string `json:"detail"`
@@ -274,6 +275,9 @@ func (n *Network) Detect() NetworkReport {
 	}
 	if b, e := n.run("ovs-vsctl", "list-br"); e == nil {
 		r.Checks = append(r.Checks, Check{Name: "OVS 网桥", OK: true, Detail: string(b), Family: "common"})
+	}
+	for i := range r.Checks {
+		r.Checks[i].ID = networkCheckID(r.Checks[i].Name)
 	}
 	n.report = r
 	return r

@@ -1,11 +1,11 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { makeFixture } from './fixtures.mjs';
+import { makeFixture, connectionFixture } from './fixtures.mjs';
 
 const fixture = makeFixture();
 const prefix = '/app/flclash/';
-const allowed = new Set(['index.html', 'app.js', 'model.js', 'style.css']);
-const shell = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>FlClash 0.2.1 本地交互验收 · 模拟数据</title><style>body{margin:0;background:#dfe4ee;font:14px "Microsoft YaHei",sans-serif;color:#344056}header{padding:12px 20px;background:#fff;display:flex;gap:12px;align-items:center;flex-wrap:wrap}header strong{margin-right:auto}button{border:1px solid #d3d7e1;border-radius:6px;padding:7px 12px;background:white;cursor:pointer}main{padding:20px;display:flex;justify-content:center}iframe{border:1px solid #cbd1df;border-radius:10px;background:white;box-shadow:0 10px 35px #59678522;max-width:100%;height:720px;width:1200px}small{color:#a16d28}</style><header><strong>FlClash 0.2.1 · 本地交互验收</strong><small>全部为模拟数据，不连接 NAS，不修改系统网络</small><button data-w="1200" data-h="720">常规窗口</button><button data-w="840" data-h="560">缩小窗口</button><button data-w="390" data-h="640">窄屏</button><button data-w="1600" data-h="850">大窗口</button></header><main><iframe title="FlClash 模拟内嵌窗口" src="/app/flclash/"></iframe></main><script>document.querySelectorAll('button').forEach(b=>b.onclick=()=>{const f=document.querySelector('iframe');f.style.width=b.dataset.w+'px';f.style.height=b.dataset.h+'px'})</script></html>`;
+const allowed = new Set(['index.html', 'app.js', 'model.js', 'console.js', 'style.css']);
+const shell = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>FlClash 0.3.0 本地交互验收 · 模拟数据</title><style>body{margin:0;background:#dfe4ee;font:14px "Microsoft YaHei",sans-serif;color:#344056}header{padding:12px 20px;background:#fff;display:flex;gap:12px;align-items:center;flex-wrap:wrap}header strong{margin-right:auto}button{border:1px solid #d3d7e1;border-radius:6px;padding:7px 12px;background:white;cursor:pointer}main{padding:20px;display:flex;justify-content:center}iframe{border:1px solid #cbd1df;border-radius:10px;background:white;box-shadow:0 10px 35px #59678522;max-width:100%;height:720px;width:1200px}small{color:#a16d28}</style><header><strong>FlClash 0.3.0 · 本地交互验收</strong><small>全部为模拟数据，不连接 NAS，不修改系统网络</small><button data-w="1200" data-h="720">常规窗口</button><button data-w="840" data-h="560">缩小窗口</button><button data-w="390" data-h="640">窄屏</button><button data-w="1600" data-h="850">大窗口</button></header><main><iframe title="FlClash 模拟内嵌窗口" src="/app/flclash/"></iframe></main><script>document.querySelectorAll('button').forEach(b=>b.onclick=()=>{const f=document.querySelector('iframe');f.style.width=b.dataset.w+'px';f.style.height=b.dataset.h+'px'})</script></html>`;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1:19877');
@@ -25,8 +25,24 @@ const server = createServer(async (req, res) => {
       if (path === 'status') { send(s); return; }
       if (path === 'proxies') { send(fixture.proxies); return; }
       if (path === 'logs') { send(fixture.logs); return; }
+      if (path === 'network/targets') { send(fixture.targets); return; }
+      if (path === 'connections') { send(connectionFixture(fixture, url.search)); return; }
+      if (path === 'events') { send(fixture.events); return; }
+      if (path === 'diagnostics/result') { send({ items: fixture.diagnostics }); return; }
+      if (path === 'diagnostics/export') { send('仅供界面验收的模拟诊断摘要，不是实机结果。', 200, 'text/plain; charset=utf-8'); return; }
       if (req.method !== 'POST') { send({ error: '未知预览接口' }, 404); return; }
       switch (path) {
+        case 'diagnostics/start': {
+          const task = { id: `diagnostic-${Date.now()}`, targetID: body.targetID, targetName: fixture.targets.items.find(t => t.id === body.targetID)?.name, destination: body.preset === 'docker' ? 'registry-1.docker.io' : 'example.com', preset: body.preset, networkMode: s.settings.networkMode, state: 'running', stage: '检查 DNS', started: new Date().toISOString(), steps: [], paths: [], stale: false };
+          fixture.diagnostics.unshift(task); send(task);
+          setTimeout(() => {
+            if (task.state !== 'running') return;
+            task.state = 'done'; task.code = 'completed'; task.summary = '模拟检测完成'; task.finished = new Date().toISOString();
+            task.steps = ['address', 'route', 'dns_udp', 'dns_tcp', 'https'].map((id, i) => ({ id, family: 'ipv4', title: ['网络地址', '默认路由', 'DNS UDP', 'DNS TCP', 'HTTPS'][i], state: 'passed', code: id === 'https' && body.preset === 'docker' ? 'authentication_required' : 'available', detail: '模拟通过，不能作为实机验证证据', at: task.finished, httpStatus: id === 'https' ? body.preset === 'docker' ? 401 : 204 : undefined }));
+            task.paths = [{ family: 'ipv4', path: 'proxy', exit: '模拟节点', rule: 'DomainSuffix', chains: ['模拟节点', '主要代理'], connectionID: '模拟连接' }, { family: 'ipv6', path: 'excluded' }];
+          }, 3000).unref(); return;
+        }
+        case 'diagnostics/cancel': { const task = fixture.diagnostics.find(t => t.id === body.id); if (task) { task.state = 'cancelled'; task.code = 'cancelled'; task.summary = '模拟检测已取消'; } break; }
         case 'settings': Object.assign(s.settings, body); s.network.mode = s.settings.networkMode; s.network.ready = s.settings.networkMode === 'ipv4'; s.network.checks[1].required = s.settings.networkMode !== 'ipv4'; break;
         case 'network/detect': s.network.at = new Date().toISOString(); break;
         case 'control': s.settings.enabled = s.proxyActive = !!body.enabled; break;

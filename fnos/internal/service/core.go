@@ -12,13 +12,14 @@ import (
 )
 
 type Core struct {
-	RPC    *RPC
-	cmd    *exec.Cmd
-	exited chan struct{}
-	logs   *Logs
+	identity string
+	RPC      *RPC
+	cmd      *exec.Cmd
+	exited   chan struct{}
+	logs     *Logs
 }
 
-func launchCore(binary, home, socket string, logs *Logs) (*Core, error) {
+func launchCore(binary, home, socket string, logs *Logs, observers ...*Observability) (*Core, error) {
 	_ = os.Remove(socket)
 	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
 	if err != nil {
@@ -28,7 +29,7 @@ func launchCore(binary, home, socket string, logs *Logs) (*Core, error) {
 	if err = os.Chmod(socket, 0600); err != nil {
 		return nil, err
 	}
-	c := &Core{cmd: exec.Command(binary, socket), exited: make(chan struct{}), logs: logs}
+	c := &Core{identity: randomID(), cmd: exec.Command(binary, socket), exited: make(chan struct{}), logs: logs}
 	c.cmd.Env = append(os.Environ(), "DISABLE_NFTABLES=false")
 	c.cmd.Dir = home
 	c.cmd.Stdout = logs
@@ -70,6 +71,11 @@ func launchCore(binary, home, socket string, logs *Logs) (*Core, error) {
 			}
 		}
 		for _, msg := range batch {
+			if msg.Type == "request" {
+				for _, observer := range observers {
+					observer.receive(c.identity, msg.Data)
+				}
+			}
 			if msg.Type == "log" {
 				logs.Add(string(msg.Data))
 			}

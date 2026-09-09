@@ -120,6 +120,10 @@ func TestGatewayAdminAndCSRF(t *testing.T) {
 		{"true", "1000", "管理员", "POST", prefix + "/api/control", "", "", 403},
 		{"true", "1000", "管理员", "POST", prefix + "/api/shutdown", "", "1", 403},
 		{"true", "1000", "管理员", "GET", prefix + "/api/status", "", "", 503},
+		{"false", "1001", "普通用户", "GET", prefix + "/api/connections", "", "", 403},
+		{"false", "1001", "普通用户", "GET", prefix + "/api/diagnostics/export?id=test", "", "", 403},
+		{"true", "1000", "管理员", "POST", prefix + "/api/diagnostics/start", "", "", 403},
+		{"true", "1000", "管理员", "POST", prefix + "/api/diagnostics/cancel", "https://evil.example", "1", 403},
 	}
 	for _, c := range cases {
 		r := httptest.NewRequest(c.method, "http://nas"+c.path, strings.NewReader("{}"))
@@ -576,7 +580,10 @@ func TestRealCoreProtocolAndRollback(t *testing.T) {
 	if err = rpc.Text(ctx, "changeProxy", map[string]any{"group-name": "代理组", "proxy-name": "DIRECT"}); err != nil {
 		t.Fatal(err)
 	}
-	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	defer probe.Close()
 	m.settings.HealthURL = probe.URL
 	handler := m.Handler()

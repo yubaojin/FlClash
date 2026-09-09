@@ -46,6 +46,14 @@ app.*.map.json
 
 # Documentation (generated/planning artifacts)
 docs/
+!/fnos/docs/
+/fnos/docs/*
+!/fnos/docs/screenshots/
+/fnos/docs/screenshots/*
+!/fnos/docs/screenshots/0.3.0/
+!/fnos/docs/acceptance/
+/fnos/docs/acceptance/*
+!/fnos/docs/acceptance/0.3.0/
 
 
 # Android Studio will place build artifacts here

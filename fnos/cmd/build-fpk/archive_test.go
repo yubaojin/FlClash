@@ -113,7 +113,10 @@ func TestBuiltPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	binaries := 0
-	documents := map[string]bool{"安装与恢复说明.md": false, "TESTING-0.2.0.md": false, "TESTING-0.2.1.md": false, "docs/screenshots/0.2.0/narrow-dialog.png": false}
+	documents := map[string]bool{"安装与恢复说明.md": false, "TESTING-0.2.0.md": false, "TESTING-0.2.1.md": false, "TESTING-0.3.0.md": false}
+	for _, name := range []string{"docs/screenshots/0.3.0/connections-simulated.png", "docs/acceptance/0.3.0/flclash-acceptance-030-latest.jsonl", "licenses/golang-x-net-LICENSE"} {
+		documents[name] = false
+	}
 	for _, entry := range inner {
 		if _, exists := documents[entry.header.Name]; exists {
 			documents[entry.header.Name] = len(entry.data) > 0

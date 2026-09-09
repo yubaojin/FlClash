@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/app/flclash/style.css">
   <script src="/app/flclash/model.js" defer></script>
   <script src="/app/flclash/app.js" defer></script>
+  <script src="/app/flclash/console.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -20,11 +21,12 @@
         <button data-tab="overview" class="nav-item selected" aria-current="page"><span aria-hidden="true">◫</span>概览</button>
         <button data-tab="profiles" class="nav-item"><span aria-hidden="true">▤</span>配置</button>
         <button data-tab="proxies" class="nav-item"><span aria-hidden="true">⇄</span>节点</button>
+        <button data-tab="connections" class="nav-item"><span aria-hidden="true">◎</span>连接</button>
         <button data-tab="network" class="nav-item"><span aria-hidden="true">⌘</span>网络</button>
         <button data-tab="logs" class="nav-item"><span aria-hidden="true">≡</span>日志</button>
       </nav>
-      <label class="mobile-nav">当前页面<select id="mobile-page"><option value="overview">概览</option><option value="profiles">配置</option><option value="proxies">节点</option><option value="network">网络</option><option value="logs">日志</option></select></label>
-      <div class="sidebar-footer"><span class="badge">预览版 0.2.1</span><p>共享节点 · 按规则分流</p></div>
+      <label class="mobile-nav">当前页面<select id="mobile-page"><option value="overview">概览</option><option value="profiles">配置</option><option value="proxies">节点</option><option value="connections">连接</option><option value="network">网络</option><option value="logs">日志</option></select></label>
+      <div class="sidebar-footer"><span class="badge">预览版 0.3.0</span><p>共享节点 · 按规则分流</p></div>
     </aside>
     <main id="workspace" tabindex="-1">
       <div id="service-alert" class="notice error" role="alert" hidden></div>
@@ -32,6 +34,8 @@
         <div class="page-heading"><div><h1 id="overview-title">概览</h1><p>网络状态，一目了然。</p></div><span id="operation" class="badge" role="status" hidden></span></div>
         <div id="overview-message" class="notice" role="status" hidden></div>
         <article class="hero"><div class="hero-main"><span id="power-icon" class="power" aria-hidden="true">⏻</span><div><div class="eyebrow">透明代理</div><h2 id="proxy-state">正在读取状态</h2><p id="proxy-detail">连接后台后显示实际运行情况。</p></div></div><button id="toggle" class="primary" data-write disabled>请稍候</button></article>
+        <details id="proxy-failure" class="disclosure" hidden><summary>查看原因与下一步</summary><p id="proxy-failure-detail" class="technical"></p><p>检查当前节点和网络条件；修正后再开启。直连降级时可用主按钮停止自动恢复。</p><button class="text-button" data-go="network">前往网络重新检测</button></details>
+        <article class="diagnostic-summary"><div><div class="eyebrow">最近一次 NAS 检测</div><h2 id="nas-result">尚未检测实际网络</h2><p id="nas-result-detail" class="muted">联网结果和代理路径分别确认，不改变当前规则与节点。</p></div><div class="actions"><button id="nas-detect" class="secondary">检测 NAS 网络</button><button id="nas-result-open" class="text-button" hidden>查看结果</button></div></article>
         <div id="ipv4-notice" class="notice warning" hidden>仅代理 IPv4；IPv6 可能直接连接，不提供 IPv6 防泄漏保证。</div>
         <div class="stat-grid">
           <article class="stat"><span>核心配置</span><strong id="core-state">—</strong><small id="core-description">等待状态</small></article>
@@ -39,7 +43,7 @@
           <article class="stat"><span>核心上行 / 下行</span><strong id="traffic">— / —</strong><small id="traffic-description">不是 NAS 总流量</small></article>
         </div>
         <div class="content-grid">
-          <article><div class="card-heading"><h2>当前配置</h2><button class="text-button" data-go="profiles">管理配置</button></div><strong id="active-profile" class="profile-title">尚未使用配置</strong><p id="active-profile-detail" class="muted">添加订阅或本地 YAML，即可开始。</p><div class="divider"></div><label>分流模式</label><div class="segmented" aria-label="分流模式"><button data-mode="rule" data-write>规则</button><button data-mode="global" data-write>全局</button><button data-mode="direct" data-write>直连</button></div><p id="mode-help" class="muted">规则模式按配置中的规则选择出口。</p></article>
+          <article><div class="card-heading"><h2>当前配置</h2><button class="text-button" data-go="profiles">管理配置</button></div><strong id="active-profile" class="profile-title">尚未使用配置</strong><p id="active-profile-detail" class="muted">添加订阅或本地 YAML，即可开始。</p><div class="divider"></div><label>分流模式</label><div class="segmented" aria-label="分流模式"><button data-mode="rule" data-write>规则</button><button data-mode="global" data-write>全局</button><button data-mode="direct" data-write>全部直连</button></div><p id="mode-help" class="muted">规则模式按配置中的规则选择出口。</p></article>
           <article><div class="card-heading"><h2>快捷选节点</h2><button class="text-button" data-go="proxies">全部策略组</button></div><label>主要策略组<select id="main-group" data-write><option value="">先使用有效配置</option></select></label><label>当前节点<select id="quick-node" data-write><option value="">暂无节点</option></select></label><p id="group-help" class="muted">主要策略组同时用于规则模式的故障检测，不会改写订阅规则。</p></article>
         </div>
         <article id="setup-guide"><div class="card-heading"><h2>完成首次设置</h2><span class="muted">导入不等于已开启代理</span></div><div id="setup-steps" class="setup-steps"></div></article>
@@ -49,6 +53,7 @@
         <div class="page-heading"><div><h1 id="profiles-title">配置</h1><p>管理订阅与本地配置，使用失败时保留原配置。</p></div><button id="add-profile" class="primary" data-write>＋ 添加配置</button></div>
         <div id="profiles-message" class="notice" role="status" hidden></div>
         <div class="list-toolbar"><span id="profile-count" class="muted">正在读取配置</span><input id="profile-search" type="search" placeholder="搜索配置名称" aria-label="搜索配置名称"></div>
+        <div id="import-next" class="notice success" hidden>配置已保存。接下来确认节点与接管范围。<div class="actions"><button class="secondary" data-go="proxies">前往节点</button><button class="secondary" data-go="network">检查网络</button></div></div>
         <div id="profile-list" class="profile-list"></div>
       </section>
       <section id="proxies" class="panel" aria-labelledby="proxies-title" hidden>
@@ -56,32 +61,44 @@
         <div id="proxies-message" class="notice" role="status" hidden></div>
         <div id="proxy-empty" class="empty-state" hidden><h2>还没有可用的节点列表</h2><p>请先使用有效配置，或等待核心完成加载。</p><button class="secondary" data-go="profiles">前往配置</button></div>
         <div id="proxy-browser">
-          <article class="proxy-toolbar"><div class="fields"><label>策略组<select id="proxy-group"></select></label><label>查找节点<input id="node-search" type="search" placeholder="输入节点名称"></label><label>排序<select id="node-sort"><option value="original">订阅原顺序</option><option value="delay">延迟从低到高</option></select></label></div><div class="split-line"><p id="group-description" class="muted"></p><div class="actions"><span id="batch-progress" class="muted" role="status"></span><button id="batch-test" class="secondary">检测当前列表</button><button id="cancel-test" class="secondary" hidden>停止排队</button></div></div></article>
+          <article class="selection-summary"><span class="eyebrow">当前组的选择</span><strong id="selected-node">—</strong><p id="selected-node-help" class="muted"></p></article>
+          <article class="proxy-toolbar"><label>查找策略组<input id="group-search" type="search" placeholder="输入策略组名称"></label><div class="fields"><label>策略组<select id="proxy-group"></select></label><label>查找节点<input id="node-search" type="search" placeholder="输入节点名称"></label><label>排序<select id="node-sort"><option value="original">订阅原顺序</option><option value="delay">延迟从低到高</option></select></label></div><div class="split-line"><p id="group-description" class="muted"></p><div class="actions"><span id="batch-progress" class="muted" role="status"></span><button id="batch-test" class="secondary">检测当前列表</button><button id="cancel-test" class="secondary" hidden>停止排队</button></div></div></article>
           <div id="node-list" class="node-list"></div><button id="more-nodes" class="secondary full-width" hidden>显示更多节点</button>
           <p class="footnote">这里测量连接延迟，不是下载速率。自动选择、故障转移等策略由核心管理。</p>
         </div>
       </section>
+      <section id="connections" class="panel" aria-labelledby="connections-title" hidden>
+        <div class="page-heading"><div><h1 id="connections-title">连接</h1><p>查看本次核心会话中观察到的访问与实际出口。</p></div><button id="refresh-connections" class="secondary">刷新连接</button></div>
+        <div id="connections-message" class="notice" role="status" hidden></div>
+        <article class="connection-filters"><div class="fields"><label>容器 / 来源<select id="connection-source"><option value="">全部来源</option></select></label><label>目标 / 关键词<input id="connection-search" type="search" placeholder="域名、地址、规则或节点"></label><label>出口类型<select id="connection-path"><option value="">全部出口</option><option value="proxy">经过代理</option><option value="direct">DIRECT 直连</option><option value="unknown">路径未确认</option></select></label></div><label class="check-label"><input id="connection-auto" type="checkbox" checked>前台每 2 秒刷新</label></article>
+        <p id="connection-count" class="muted" role="status">尚未读取</p><div id="connection-list" class="connection-list"></div>
+        <div class="pagination"><button id="connection-prev" class="secondary">上一页</button><span id="connection-page"></span><button id="connection-next" class="secondary">下一页</button></div>
+        <p class="footnote">只读；最多保留 10 分钟内最近 1,000 条，非完整审计记录。共享宿主网络不指认具体容器。切换节点后，既有连接可能继续使用旧出口。</p>
+      </section>
       <section id="network" class="panel" aria-labelledby="network-title" hidden>
         <div class="page-heading"><div><h1 id="network-title">网络</h1><p>先确认接管范围，再检查实际网络条件。</p></div><button id="detect" class="secondary" data-write>重新检测</button></div>
         <div id="network-message" class="notice" role="status" hidden></div>
+        <article><div class="card-heading"><div><h2>网络对象</h2><p class="muted">选择对象，检测其网络环境；不会修改容器网络。</p></div><button id="refresh-targets" class="text-button">刷新对象</button></div><div id="targets-message" class="notice" role="status" hidden></div><div id="network-targets"><p class="muted">正在发现 NAS 和 Docker 容器…</p></div></article>
+        <details class="disclosure"><summary>最近检测记录（最多 20 次）</summary><div id="diagnostic-history"></div><p class="footnote">仅保存在服务内存；重启清空。配置变化后须重新检测。</p></details>
         <article><div class="card-heading"><h2>接管模式</h2><span id="network-report-time" class="muted">尚未检测</span></div><form id="network-form"><div class="fields two"><label>网络范围<select id="network-mode"><option value="dual">IPv4 + IPv6 双栈</option><option value="ipv4">仅 IPv4</option></select></label><div class="field-explanation">仅 IPv4 适用于没有 IPv6 出口的 NAS。双栈模式需要两个地址族均满足前置条件。</div></div><label class="check-label"><input id="network-confirm" type="checkbox" required><span id="network-confirm-text">我确认所选范围：同时接管 IPv4 和 IPv6，两个地址族都必须有可用出口。</span></label><button type="submit" class="primary" data-write>保存并检测</button></form></article>
         <div id="network-summary"></div><div id="family-status" class="family-grid"></div>
         <details id="network-details" class="disclosure"><summary>查看全部检测项目</summary><div id="network-checks" class="check-list"></div></details>
-        <details class="disclosure"><summary>容器与虚拟机接入</summary><div id="network-coverage"></div><ol><li>记录客户端原 IPv4 / IPv6 网关和 DNS，确认 NAS 与客户端相互可达。</li><li>普通 Docker host / bridge 先验证现有网络，不要重复登记网关网段。</li><li>需要经 NAS 路由的客户端，按所选模式分别调整网关。macvlan、ipvlan、网卡直通不标记自动支持。</li><li>分别验证 TCP、UDP、DNS、NAS 管理页、SMB、容器互访与发布端口。</li><li>停用应用、卸载或关闭 NAS 前，恢复这些客户端的原网关。</li></ol></details>
+        <details class="disclosure"><summary>虚拟机与特殊网络接入指引</summary><div id="network-coverage"></div><ol><li>记录客户端原 IPv4 / IPv6 网关和 DNS，确认 NAS 与客户端相互可达。</li><li>普通 Docker host / bridge 先验证现有网络，不要重复登记网关网段。</li><li>需要经 NAS 路由的客户端，按所选模式分别调整网关。macvlan、ipvlan、网卡直通不标记自动支持。</li><li>分别验证 TCP、UDP、DNS、NAS 管理页、SMB、容器互访与发布端口。</li><li>停用应用、卸载或关闭 NAS 前，恢复这些客户端的原网关。</li></ol></details>
         <details class="disclosure"><summary>高级设置：网关客户端</summary><form id="gateway-form"><p class="muted">只登记明确的私有客户端网段，不修改客户端网关。仅 IPv4 模式不接受 IPv6 网段。</p><label>每行一个 CIDR<textarea id="gateway-cidrs" rows="4" placeholder="192.168.100.0/24"></textarea></label><button type="submit" class="secondary" data-write>保存网段</button></form></details>
         <details class="disclosure"><summary>高级设置：故障检测地址</summary><form id="health-form"><label>检测地址<input id="health-url" type="url" required></label><p class="muted">规则模式检测首页的主要策略组，全局模式检测 GLOBAL。连续三次失败撤销接管，两次恢复后重试；单组结果不代表所有分流目标。</p><button type="submit" class="secondary" data-write>保存检测地址</button></form></details>
         <details class="disclosure danger-zone"><summary>恢复工具</summary><p>关闭代理并撤销本应用的接管与普通转发。请先恢复网关客户端原网关，避免客户端断网。不会清空系统防火墙或 Docker 规则。</p><button id="recover" class="danger" data-write>恢复本应用网络变更</button></details>
       </section>
       <section id="logs" class="panel" aria-labelledby="logs-title" hidden>
-        <div class="page-heading"><div><h1 id="logs-title">日志</h1><p>最近 500 条。常见凭据已隐藏，分享前仍需检查个人信息。</p></div><button id="refresh-logs" class="secondary">刷新日志</button></div>
+        <div class="page-heading"><div><h1 id="logs-title">日志</h1><p>运行事件优先展示；技术细节按需展开。</p></div><button id="refresh-logs" class="secondary">刷新日志</button></div>
         <div id="logs-message" class="notice" role="status" hidden></div>
         <div class="log-toolbar"><input id="log-search" type="search" placeholder="搜索日志" aria-label="搜索日志"><label class="check-label"><input id="log-auto" type="checkbox" checked>自动刷新</label><label class="check-label"><input id="log-bottom" type="checkbox" checked>跟随最新</label></div>
-        <pre id="log-content" tabindex="0" aria-label="运行日志">正在读取日志…</pre><p id="log-count" class="footnote"></p>
+        <div id="event-list" class="event-list"></div><details id="raw-logs" class="disclosure"><summary>原始核心与服务日志（最近 500 条）</summary><pre id="log-content" tabindex="0" aria-label="运行日志">正在读取日志…</pre><p id="log-count" class="footnote"></p></details><p class="footnote">在网络检测详情中可导出脱敏摘要，不包含订阅、凭据和完整访问历史。</p>
       </section>
     </main>
   </div>
-<dialog id="profile-dialog" aria-labelledby="dialog-title"><form id="profile-form" class="dialog-layout"><div class="dialog-heading"><div><h2 id="dialog-title">添加配置</h2><p id="dialog-description">导入后可立即使用配置，但不会自动开启代理。</p></div><button type="button" id="close-profile" class="icon-button" aria-label="关闭配置弹窗">×</button></div><div class="dialog-body"><div id="dialog-message" class="notice" role="alert" hidden></div><div id="source-tabs" class="segmented source-tabs" aria-label="导入方式"><button type="button" data-source="url" class="selected">订阅</button><button type="button" data-source="file">本地文件</button><button type="button" data-source="yaml">粘贴 YAML</button></div><label>配置名称<input id="profile-name" maxlength="128" required autocomplete="off" placeholder="例如：日常使用"></label><div id="source-url"><label><span id="url-label">订阅地址</span><input id="profile-url" type="password" autocomplete="off" spellcheck="false" placeholder="https://…"></label><p id="url-help" class="muted">地址包含访问凭据，默认隐藏。只向 NAS 后台提交。</p><label>更新间隔（小时，0 为手动）<input id="profile-interval" type="number" min="0" max="720" value="24" required></label></div><div id="source-file" hidden><label class="file-drop">选择 Clash YAML 文件<input id="profile-file" type="file" accept=".yaml,.yml,text/yaml"></label><p id="file-description" class="muted">支持 .yaml / .yml，最大 8 MiB。</p></div><div id="source-yaml" hidden><label>Clash YAML 内容<textarea id="profile-yaml" rows="9" spellcheck="false" placeholder="proxies: …"></textarea></label></div><p class="footnote">管理入口、DNS 与接管参数由应用保护，不会被订阅覆盖。</p></div><div class="dialog-footer"><button type="button" id="cancel-profile" class="text-button">取消</button><div class="actions"><button type="submit" id="save-profile" value="use" class="primary">导入并使用</button><button type="submit" id="import-only" value="import" class="secondary">仅导入</button></div></div></form></dialog>
+<dialog id="profile-dialog" aria-labelledby="dialog-title"><form id="profile-form" class="dialog-layout"><div class="dialog-heading"><div><h2 id="dialog-title">添加配置</h2><p id="dialog-description">导入后可立即使用配置，但不会自动开启代理。</p></div><button type="button" id="close-profile" class="icon-button" aria-label="关闭配置弹窗">×</button></div><div class="dialog-body"><div id="dialog-message" class="notice" role="alert" hidden></div><div id="source-tabs" class="segmented source-tabs" aria-label="导入方式"><button type="button" data-source="url" class="selected">订阅</button><button type="button" data-source="file">本地文件</button><button type="button" data-source="yaml">粘贴 YAML</button></div><label>配置名称<input id="profile-name" maxlength="128" required autocomplete="off" placeholder="例如：日常使用"></label><div id="source-url"><label><span id="url-label">订阅地址</span><input id="profile-url" type="password" autocomplete="off" spellcheck="false" placeholder="https://…"></label><p id="url-help" class="muted">地址包含访问凭据，默认隐藏。只向 NAS 后台提交。</p><label>自动更新<select id="profile-interval-preset"><option value="0">手动更新</option><option value="6">每 6 小时</option><option value="12">每 12 小时</option><option value="24" selected>每 24 小时</option><option value="custom">自定义</option></select></label><label id="custom-interval" hidden>自定义间隔（小时，0 为手动）<input id="profile-interval" type="number" min="0" max="720" value="24" required></label></div><div id="source-file" hidden><label class="file-drop">选择 Clash YAML 文件<input id="profile-file" type="file" accept=".yaml,.yml,text/yaml"></label><p id="file-description" class="muted">支持 .yaml / .yml，最大 8 MiB。</p></div><div id="source-yaml" hidden><label>Clash YAML 内容<textarea id="profile-yaml" rows="9" spellcheck="false" placeholder="proxies: …"></textarea></label></div><p class="footnote">管理入口、DNS 与接管参数由应用保护，不会被订阅覆盖。</p></div><div class="dialog-footer"><button type="button" id="cancel-profile" class="text-button">取消</button><div class="actions"><button type="submit" id="save-profile" value="use" class="primary">导入并使用</button><button type="submit" id="import-only" value="import" class="secondary">仅导入</button></div></div></form></dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title"><div class="dialog-layout"><div class="dialog-heading"><h2 id="confirm-title">确认操作</h2></div><div class="dialog-body"><p id="confirm-text"></p></div><div class="dialog-footer"><button id="confirm-no" class="secondary">取消</button><button id="confirm-yes" class="danger">确认</button></div></div></dialog>
+  <dialog id="diagnostic-dialog" aria-labelledby="diagnostic-title"><div class="dialog-layout"><div class="dialog-heading"><div><h2 id="diagnostic-title">检测网络</h2><p id="diagnostic-object"></p></div><button id="close-diagnostic" class="icon-button" aria-label="关闭检测详情">×</button></div><div class="dialog-body"><div id="diagnostic-message" class="notice" role="status" hidden></div><div id="diagnostic-options"><label>检测目标<select id="diagnostic-preset"><option value="health">已保存的故障检测地址</option><option value="docker">Docker 官方仓库</option></select></label><p id="diagnostic-destination" class="muted"></p><p class="footnote">最长 60 秒。检测 DNS UDP / TCP 和 HTTPS，使用当前规则与节点，不修改任何网络设置。结果不代表容器应用自身的代理环境变量或证书设置。</p></div><div id="diagnostic-progress" role="status"></div><div id="diagnostic-steps"></div><div id="diagnostic-paths"></div><p id="diagnostic-limits" class="footnote" hidden>联网成功不等于使用代理；未关联到本次连接则路径未确认。DNS UDP 通过不代表所有 UDP 协议通过。</p></div><div class="dialog-footer"><button id="diagnostic-export" class="text-button" hidden>导出脱敏摘要</button><span></span><div class="actions"><button id="diagnostic-cancel" class="secondary" hidden>取消检测</button><button id="diagnostic-start" class="primary">开始检测</button></div></div></div></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>

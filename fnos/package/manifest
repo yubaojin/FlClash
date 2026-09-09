@@ -1,7 +1,7 @@
 appname = flclash
-version = 0.2.1
+version = 0.3.0
 display_name = FlClash
-desc = FlClash 飞牛简洁控制台：中文订阅管理、策略组节点选择、IPv4 或双栈透明代理与故障恢复。安装后默认不接管网络，仅 IPv4 模式不提供 IPv6 防泄漏保证。各网络类型须分别验收。
+desc = FlClash 飞牛简洁控制台：订阅与节点管理、只读连接、NAS 与 Docker 主动检测、IPv4 或双栈透明代理与故障恢复。安装后默认不接管网络，仅 IPv4 模式不提供 IPv6 防泄漏保证。联网结果和代理路径分别验证。
 platform = x86
 source = thirdparty
 maintainer = FlClash fnOS integration

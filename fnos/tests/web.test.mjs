@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
-import { makeFixture } from './fixtures.mjs';
+import { makeFixture, connectionFixture } from './fixtures.mjs';
 
 const source = name => readFileSync(new URL(`../internal/service/web/${name}`, import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -21,9 +21,9 @@ test('只有右侧正文可滚动，顶栏和导航保持固定', () => {
 function page(t, handler) {
   const fixture = makeFixture();
   const dom = new JSDOM(source('index.html'), { url: 'http://localhost/app/flclash/', runScripts: 'outside-only' });
-  t.after(() => dom.window.close());
+  t.after(async () => { await settle(); dom.window.close(); });
   const w = dom.window;
-  Object.defineProperty(w.document, 'hidden', { value: true });
+  Object.defineProperty(w.document, 'hidden', { value: true, configurable: true });
   w.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
   w.HTMLDialogElement.prototype.close = function() { this.open = false; };
   const requests = [];
@@ -34,11 +34,13 @@ function page(t, handler) {
     requests.push({ path, body });
     const response = await handler?.(path, body, fixture);
     if (response) return { ok: response.ok !== false, json: async () => structuredClone(response.data) };
+    const consoleData = path.startsWith('connections?') ? connectionFixture(fixture, path.split('?')[1]) : path.startsWith('network/targets') ? fixture.targets : path === 'diagnostics/result' ? { items: fixture.diagnostics } : path === 'events' ? fixture.events : undefined;
+    if (consoleData) return { ok: true, json: async () => structuredClone(consoleData) };
     const data = path === 'session' ? { csrfToken: 'test-csrf' } : path === 'status' ? fixture.status : path === 'proxies' ? fixture.proxies : path === 'logs' ? fixture.logs : { ok: true };
     return { ok: true, json: async () => structuredClone(data) };
   };
   const run = code => vm.runInContext(code, dom.getInternalVMContext());
-  run(source('model.js')); run(source('app.js'));
+  run(source('model.js')); run(source('app.js')); run(source('console.js'));
   return { w, run, requests, fixture, get: id => w.document.getElementById(id), ready: () => run('refresh()') };
 }
 
@@ -209,4 +211,76 @@ test('配置名称按文本渲染，服务连接与代理接管状态独立', as
   assert.equal(p.get('core-state').textContent, '配置已就绪'); assert.equal(p.get('proxy-state').textContent, '代理已关闭');
   p.fixture.status.coreRunning = true; p.fixture.status.coreReady = false; await p.ready();
   assert.equal(p.get('core-state').textContent, '尚未加载配置'); assert.equal(p.get('proxy-state').textContent, '代理已关闭');
+});
+
+test('一千条连接按来源分页，轮询保留展开项、焦点与搜索', async t => {
+  const p = page(t); await p.ready(); p.run('navigate("connections")'); await settle();
+  assert.equal(p.get('connection-list').children.length, 50);
+  assert.match(p.get('connection-count').textContent, /1000 条/);
+  const row = p.get('connection-list').firstElementChild; row.open = true;
+  p.get('connection-search').focus(); p.get('workspace').scrollTop = 280;
+  await p.run('FlclashConsole.loadConnections()');
+  assert.equal(p.get('connection-list').firstElementChild, row); assert.equal(row.open, true);
+  assert.equal(p.w.document.activeElement, p.get('connection-search')); assert.equal(p.get('workspace').scrollTop, 280);
+  p.get('connection-source').value = 'a'.repeat(64); p.get('connection-source').dispatchEvent(new p.w.Event('change')); await settle();
+  assert.match(p.get('connection-count').textContent, /500 条/); assert.match(p.get('connection-list').textContent, /中文容器/);
+  p.get('connection-next').click(); await settle(); assert.match(p.get('connection-page').textContent, /第 2/);
+});
+
+test('连接页丢弃旧筛选与旧页面请求，后台标签不高频轮询', async t => {
+  const pending = []; let delayed = false;
+  const p = page(t, path => path.startsWith('connections?') && delayed ? new Promise(resolve => pending.push(resolve)) : undefined);
+  await p.ready(); p.run('navigate("connections")'); await settle(); delayed = true;
+  const work = p.run('FlclashConsole.loadConnections()'); await settle();
+  p.run('navigate("network")');
+  pending[0]({ data: { items: [], total: 999, coreSession: '模拟核心' } }); await work;
+  assert.doesNotMatch(p.get('connection-count').textContent, /999/);
+  const before = p.requests.length; await p.run('FlclashConsole.poll()'); assert.equal(p.requests.length, before);
+});
+
+test('对象区分停机和隔离网络，host 不提供虚假的单容器来源', async t => {
+  const p = page(t); await p.ready(); p.run('navigate("network")'); await settle();
+  assert.match(p.get('network-targets').textContent, /容器未运行/); assert.match(p.get('network-targets').textContent, /无外部网络/);
+  const rows = [...p.get('network-targets').children];
+  assert.equal(rows.find(row => row.textContent.includes('停止的容器')).querySelector('button').disabled, true);
+  const host = rows.find(row => row.textContent.includes('host 容器')); host.querySelector('.text-button').click(); await settle();
+  assert.equal(p.get('connection-source').value, 'nas');
+});
+
+test('检测只启动一次，可取消，联网成功而无连接证据显示路径未确认', async t => {
+  const now = new Date().toISOString();
+  const p = page(t, (path, body, fixture) => {
+    if (path === 'diagnostics/start') {
+      const task = { id: 'probe-1', targetID: 'nas', targetName: 'NAS', destination: 'example.com', state: 'running', stage: '检查 DNS', started: now, steps: [], paths: [], stale: false };
+      fixture.diagnostics = [task]; return { data: task };
+    }
+    if (path === 'diagnostics/cancel') { fixture.diagnostics[0].state = 'cancelled'; fixture.diagnostics[0].summary = '检测已取消'; return { data: { ok: true } }; }
+  });
+  await p.ready(); await settle(); p.get('nas-detect').focus(); p.get('nas-detect').click();
+  p.get('diagnostic-start').click(); p.get('diagnostic-start').click(); await settle();
+  assert.equal(p.requests.filter(r => r.path === 'diagnostics/start').length, 1);
+  assert.equal(p.get('diagnostic-cancel').hidden, false);
+  p.get('diagnostic-cancel').click(); await settle(); assert.match(p.get('diagnostic-progress').textContent, /已取消/);
+  p.fixture.diagnostics[0] = { ...p.fixture.diagnostics[0], state: 'done', steps: [{ id: 'https', title: '访问检测目标', state: 'passed', code: 'reachable', family: 'ipv4', detail: '可达', at: now }], paths: [{ family: 'ipv4', path: 'unknown' }] };
+  await p.run('FlclashConsole.loadHistory()'); assert.match(p.get('diagnostic-paths').textContent, /路径未确认/);
+  assert.match(p.get('nas-result').textContent, /通过/);
+  p.fixture.diagnostics[0].stale = true; await p.run('FlclashConsole.loadHistory()'); assert.match(p.get('nas-result').textContent, /过期/);
+  p.get('close-diagnostic').click(); assert.equal(p.w.document.activeElement, p.get('nas-detect'));
+});
+
+test('配置更新周期保留自定义值，首次引导只展示未完成步骤', async t => {
+  const p = page(t); p.fixture.status.settings.profiles[0].intervalHours = 48;
+  await p.ready(); p.run('openProfile("sample")');
+  assert.equal(p.get('profile-interval-preset').value, 'custom'); assert.equal(p.get('profile-interval').value, '48');
+  p.get('profile-interval-preset').value = '6'; p.get('profile-interval-preset').dispatchEvent(new p.w.Event('change')); assert.equal(p.get('profile-interval').value, '6');
+  assert.equal(p.get('setup-steps').children.length, 1); assert.match(p.get('setup-steps').textContent, /开启透明代理/);
+  assert.match(p.get('profile-list').textContent, /上次成功.*下次/);
+});
+
+test('可读运行事件支持中文搜索且保留展开项', async t => {
+  const p = page(t); await p.ready(); p.run('navigate("logs")'); await settle();
+  const row = p.get('event-list').firstElementChild; row.open = true;
+  await p.run('FlclashConsole.loadEvents()'); assert.equal(p.get('event-list').firstElementChild, row); assert.equal(row.open, true);
+  p.get('log-search').value = '不存在的事件'; p.get('log-search').dispatchEvent(new p.w.Event('input'));
+  assert.match(p.get('event-list').textContent, /没有匹配/);
 });
